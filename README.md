@@ -52,6 +52,16 @@ O con Jupyter Lab:
 jupyter lab notebooks/01_eda_mapa_rendimiento.ipynb
 ```
 
+## Google Colab
+
+Colab solo descarga el `.ipynb`, no el paquete `cdd` ni el Excel. La primera celda del notebook clona el repo y agrega `src/` al `PYTHONPATH`.
+
+[Abrir 01_eda en Colab](https://colab.research.google.com/github/FFerrerPuccio1/Ciencia-Datos-G4/blob/main/notebooks/01_eda_mapa_rendimiento.ipynb)
+
+1. En GitHub: **Code → Open with GitHub Codespaces** no hace falta. Usá el link de Colab de arriba, o en Colab: **Archivo → Abrir notebook → GitHub**.
+2. Ejecutá la celda de setup (clona `Ciencia-Datos-G4` en `/content` e instala `openpyxl` y `pyarrow`).
+3. Si el repo es **privado**, en Colab: 🔑 Secrets → `GITHUB_TOKEN` (un PAT con `repo`). Si es **público**, no hace falta token.
+
 **La primera lectura del Excel puede tardar varios minutos** (~103 mil filas, XML interno ~80 MB). El notebook guarda un Parquet en `data/processed/mapa_rendimiento.parquet`. Las corridas siguientes deben usar ese archivo.
 
 ## Dataset
