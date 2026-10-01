@@ -1,0 +1,451 @@
+================================================================================
+CELL 0 [markdown]
+================================================================================
+# 01 — EDA mapa de rendimiento
+
+Exploración del monitor de cosecha de maíz (**Oviedo - Lote1**).
+
+La primera lectura del Excel puede tardar varios minutos. Después se usa el Parquet en `data/processed/`.
+
+**Colab:** File → Open notebook → GitHub → `FFerrerPuccio1/Ciencia-Datos-G4`. La celda de setup clona el repo (código + Excel) porque Colab solo abre el `.ipynb`. Si el repo es privado, cargá un secreto `GITHUB_TOKEN` en Colab.
+
+================================================================================
+CELL 1 [code]
+================================================================================
+# Setup Colab: clone del repo + librerías (pandas/matplotlib/seaborn ya vienen)
+import os
+import sys
+
+IN_COLAB = "google.colab" in sys.modules
+
+if IN_COLAB:
+    token = ""
+    try:
+        from google.colab import userdata
+
+        token = (userdata.get("GITHUB_TOKEN") or "").strip()
+    except Exception:
+        token = ""
+
+    %cd /content
+    if not os.path.isdir("/content/Ciencia-Datos-G4/src/cdd"):
+        if token:
+            !git clone --depth 1 https://{token}@github.com/FFerrerPuccio1/Ciencia-Datos-G4.git
+        else:
+            !git clone --depth 1 https://github.com/FFerrerPuccio1/Ciencia-Datos-G4.git
+    %cd /content/Ciencia-Datos-G4
+    %pip install -q openpyxl pyarrow
+    sys.path.insert(0, "/content/Ciencia-Datos-G4/src")
+    print("Colab listo:", os.getcwd())
+else:
+    print("Entorno local: no hace falta clonar.")
+
+--- STDOUT ---
+/content
+/content/Ciencia-Datos-G4
+Colab listo: /content/Ciencia-Datos-G4
+
+================================================================================
+CELL 2 [code]
+================================================================================
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
+REPO_SLUG = "FFerrerPuccio1/Ciencia-Datos-G4"
+
+
+def _in_colab() -> bool:
+    return "google.colab" in sys.modules
+
+
+def _github_token() -> str:
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token or not _in_colab():
+        return token
+    try:
+        from google.colab import userdata
+
+        return (userdata.get("GITHUB_TOKEN") or "").strip()
+    except Exception:
+        return ""
+
+
+def _clone_url() -> str:
+    token = _github_token()
+    if token:
+        return f"https://{token}@github.com/{REPO_SLUG}.git"
+    return f"https://github.com/{REPO_SLUG}.git"
+
+
+def project_root() -> Path:
+    here = Path.cwd().resolve()
+    for folder in [here, *here.parents]:
+        if (folder / "src" / "cdd").is_dir():
+            return folder
+
+    if not _in_colab():
+        raise FileNotFoundError(
+            "No se encontró src/cdd. Ejecutá el notebook desde el repo "
+            "(carpeta notebooks/ o raíz del proyecto)."
+        )
+
+    dest = Path("/content") / "Ciencia-Datos-G4"
+    if not (dest / "src" / "cdd").is_dir():
+        print(f"Clonando https://github.com/{REPO_SLUG} ...")
+        subprocess.check_call(["git", "clone", "--depth", "1", _clone_url(), str(dest)])
+    os.chdir(dest)
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "-q", "openpyxl", "pyarrow"]
+    )
+    return dest
+
+
+ROOT = project_root()
+SRC = str(ROOT / "src")
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
+
+from cdd.cleaning import clean_yield_map
+from cdd.io import load_processed, load_raw, to_parquet
+from cdd.paths import PROCESSED_PARQUET
+
+print("Proyecto:", ROOT)
+sns.set_theme(style="whitegrid")
+pd.set_option("display.max_columns", 30)
+
+--- STDOUT ---
+Proyecto: /content/Ciencia-Datos-G4
+
+================================================================================
+CELL 3 [markdown]
+================================================================================
+## 1. Carga Excel → Parquet
+
+================================================================================
+CELL 4 [code]
+================================================================================
+if PROCESSED_PARQUET.exists():
+    df = load_processed()
+    print(f"Leído Parquet: {PROCESSED_PARQUET}")
+else:
+    print("Leyendo Excel (puede tardar)...")
+    df = load_raw()
+    to_parquet(df)
+    print(f"Guardado Parquet: {PROCESSED_PARQUET}")
+
+print(df.shape)
+df.head()
+
+--- STDOUT ---
+Leído Parquet: /content/Ciencia-Datos-G4/data/processed/mapa_rendimiento.parquet
+(103439, 21)
+
+--- RESULT ---
+   fid           Field   Dataset  Pass_Num  Obj__Id  Swth_Wdth_  Yld_Mass_W  \
+0    1  Oviedo - Lote1  TLG00067        67      123       6.825    8.497051   
+1    2  Oviedo - Lote1  TLG00067        67      124       6.825    6.254848   
+2    3  Oviedo - Lote1  TLG00067        67      125       6.825    7.160389   
+3    4  Oviedo - Lote1  TLG00067        67      126       6.825    6.319743   
+4    5  Oviedo - Lote1  TLG00067        67      187       6.825    6.326941   
+
+   Yld_Mass_D  Moisture__  Crop_Flw_M  Crop_Flw_V  Speed_km_h  Distance_m  \
+0    8.206242     15.9774     17.9934    0.006248       3.436       1.049   
+1    6.040783     15.9774     17.3735    0.006032       4.507       1.128   
+2    6.884641     16.3502     17.3735    0.006032       3.937       1.202   
+3    6.076331     16.3502     17.6200    0.006118       4.524       1.258   
+4    6.070905     16.5206     20.9316    0.007268       5.368       1.491   
+
+   Duration_s  Track_deg_  Elevation_ Area_Count  Prod_ha_h_  \
+0       1.099       19.29       549.4         On      2.3451   
+1       0.901       18.88       549.4         On      3.0760   
+2       1.099       15.82       549.4         On      2.6870   
+3       1.001       15.54       549.4         On      3.0876   
+4       1.000       12.33       548.5         On      3.6637   
+
+                 Time        lat        lon  
+0 2007-01-01 06:01:15 -32.658534 -64.266431  
+1 2007-01-01 06:01:16 -32.658524 -64.266427  
+2 2007-01-01 06:01:17 -32.658514 -64.266424  
+3 2007-01-01 06:01:18 -32.658503 -64.266420  
+4 2007-01-01 06:02:19 -32.657746 -64.266231  
+================================================================================
+CELL 5 [markdown]
+================================================================================
+## 2. Esquema, nulos y rangos
+
+================================================================================
+CELL 6 [code]
+================================================================================
+df.info()
+display(df.describe(include="all").T)
+nulos = df.isna().sum().rename("nulos")
+nulos_pct = (df.isna().mean() * 100).rename("pct")
+display(pd.concat([nulos, nulos_pct], axis=1))
+
+--- STDOUT ---
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 103439 entries, 0 to 103438
+Data columns (total 21 columns):
+ #   Column      Non-Null Count   Dtype         
+---  ------      --------------   -----         
+ 0   fid         103439 non-null  int64         
+ 1   Field       103439 non-null  object        
+ 2   Dataset     103439 non-null  object        
+ 3   Pass_Num    103439 non-null  int64         
+ 4   Obj__Id     103439 non-null  int64         
+ 5   Swth_Wdth_  103439 non-null  float64       
+ 6   Yld_Mass_W  103439 non-null  float64       
+ 7   Yld_Mass_D  103439 non-null  float64       
+ 8   Moisture__  103439 non-null  float64       
+ 9   Crop_Flw_M  103439 non-null  float64       
+ 10  Crop_Flw_V  103439 non-null  float64       
+ 11  Speed_km_h  103439 non-null  float64       
+ 12  Distance_m  103439 non-null  float64       
+ 13  Duration_s  103439 non-null  float64       
+ 14  Track_deg_  103439 non-null  float64       
+ 15  Elevation_  103439 non-null  float64       
+ 16  Area_Count  103439 non-null  object        
+ 17  Prod_ha_h_  103439 non-null  float64       
+ 18  Time        103439 non-null  datetime64[ns]
+ 19  lat         103439 non-null  float64       
+ 20  lon         103439 non-null  float64       
+dtypes: datetime64[ns](1), float64(14), int64(3), object(3)
+memory usage: 16.6+ MB
+
+--- DISPLAY ---
+            nulos  pct
+fid             0  0.0
+Field           0  0.0
+Dataset         0  0.0
+Pass_Num        0  0.0
+Obj__Id         0  0.0
+Swth_Wdth_      0  0.0
+Yld_Mass_W      0  0.0
+Yld_Mass_D      0  0.0
+Moisture__      0  0.0
+Crop_Flw_M      0  0.0
+Crop_Flw_V      0  0.0
+Speed_km_h      0  0.0
+Distance_m      0  0.0
+Duration_s      0  0.0
+Track_deg_      0  0.0
+Elevation_      0  0.0
+Area_Count      0  0.0
+Prod_ha_h_      0  0.0
+Time            0  0.0
+lat             0  0.0
+lon             0  0.0
+================================================================================
+CELL 7 [code]
+================================================================================
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+cols_boxplot = ["Yld_Mass_D", "Moisture__", "Speed_km_h", "Elevation_"]
+
+fig, axes = plt.subplots(1, 4, figsize=(16, 5))
+
+nombres_formales = ["Rendimiento Seco\n[kg/ha]", "Humedad\n[%]", "Velocidad\n[km/h]", "Elevación\n[m]"]
+
+for ax, col, title in zip(axes, cols_boxplot, nombres_formales):
+    sns.boxplot(y=clean[col], ax=ax, color="skyblue", showfliers=True)
+    ax.set_title(title, fontsize=11, fontweight='bold')
+    ax.set_ylabel("Valor de la Variable", fontsize=10)
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
+
+fig.suptitle("Auditoría de Outliers y Dispersión (Basado en Estadísticos Descriptivos)", fontsize=13, fontweight='bold', y=1.03)
+fig.tight_layout()
+plt.show()
+
+--- DISPLAY ---
+<Figure size 1600x500 with 4 Axes>
+================================================================================
+CELL 8 [markdown]
+================================================================================
+## 3. Limpieza mínima
+
+Tipos numéricos, `Time` de serial Excel a datetime, y filtros de coordenadas nulas, velocidad 0.1–20 km/h, rendimiento ≥ 0 y humedad 0–40 %.
+
+================================================================================
+CELL 9 [code]
+================================================================================
+clean = clean_yield_map(df)
+print(f"Filas crudas: {len(df):,}")
+print(f"Filas limpias: {len(clean):,}")
+print(f"Descartadas: {len(df) - len(clean):,}")
+clean[["Time", "Yld_Mass_D", "Moisture__", "Speed_km_h", "lat", "lon"]].head()
+
+--- STDOUT ---
+Filas crudas: 103,439
+Filas limpias: 103,439
+Descartadas: 0
+
+--- RESULT ---
+                 Time  Yld_Mass_D  Moisture__  Speed_km_h        lat  \
+0 2007-01-01 06:01:15    8.206242     15.9774       3.436 -32.658534   
+1 2007-01-01 06:01:16    6.040783     15.9774       4.507 -32.658524   
+2 2007-01-01 06:01:17    6.884641     16.3502       3.937 -32.658514   
+3 2007-01-01 06:01:18    6.076331     16.3502       4.524 -32.658503   
+4 2007-01-01 06:02:19    6.070905     16.5206       5.368 -32.657746   
+
+         lon  
+0 -64.266431  
+1 -64.266427  
+2 -64.266424  
+3 -64.266420  
+4 -64.266231  
+================================================================================
+CELL 10 [markdown]
+================================================================================
+## 4. Distribuciones de rendimiento, humedad, velocidad y elevación
+
+================================================================================
+CELL 11 [code]
+================================================================================
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+fig, axes = plt.subplots(1, 4, figsize=(18, 4))
+vars_ = [
+    ("Yld_Mass_D", "Rendimiento Seco", "Rendimiento [kg/ha]"),
+    ("Moisture__", "Humedad del Grano", "Humedad [%]"),
+    ("Speed_km_h", "Velocidad de Operación", "Velocidad [km/h]"),
+    ("Elevation_", "Elevación del Terreno", "Altitud [m]")
+]
+
+for ax, (col, title, xlabel) in zip(axes, vars_):
+    sns.histplot(clean[col], bins=50, ax=ax, kde=True, color='forestgreen')
+    ax.set_title(title, fontsize=11, fontweight='bold')
+    ax.set_xlabel(xlabel, fontsize=10)
+    ax.set_ylabel("Frecuencia (Cantidad de Registros)", fontsize=10)
+
+fig.tight_layout()
+plt.show()
+
+clean[list(v[0] for v in vars_)].describe()
+
+--- DISPLAY ---
+<Figure size 1800x400 with 4 Axes>
+--- RESULT ---
+          Yld_Mass_D     Moisture__     Speed_km_h     Elevation_
+count  103439.000000  103439.000000  103439.000000  103439.000000
+mean        7.555041      15.261969       5.915205     554.710783
+std         1.307151       0.438176       0.861106       5.287507
+min         3.425709      14.040400       1.277000     539.800000
+25%         6.723067      15.003000       5.495000     550.800000
+50%         7.524621      15.308000       6.011000     555.500000
+75%         8.348380      15.546750       6.484000     558.600000
+max        11.511795      16.548100      14.224000     565.800000
+================================================================================
+CELL 12 [markdown]
+================================================================================
+## 5. Mapa de puntos por `Yld_Mass_D`
+
+================================================================================
+CELL 13 [code]
+================================================================================
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df_sample = clean.sample(n=min(40000, len(clean)), random_state=42)
+
+plt.figure(figsize=(10, 8))
+
+scatter = plt.scatter(
+    df_sample['lon'],
+    df_sample['lat'],
+    c=df_sample['Yld_Mass_D'],
+    cmap='RdYlGn',     # Paleta de rojo (bajo) a verde (alto rendimiento)
+    s=10,
+    alpha=0.7
+)
+
+cbar = plt.colorbar(scatter)
+cbar.set_label('Rendimiento Seco [kg/ha]', fontsize=11, fontweight='bold')
+
+plt.title('Mapa Espacial de Rendimiento Intra-lote (Oviedo - Lote 1)', fontsize=13, fontweight='bold', pad=15)
+plt.xlabel('Longitud [Grados Decimales]', fontsize=11)
+plt.ylabel('Latitud [Grados Decimales]', fontsize=11)
+
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+--- DISPLAY ---
+<Figure size 1000x800 with 2 Axes>
+================================================================================
+CELL 14 [markdown]
+================================================================================
+## 6. Comparación por pasada
+
+================================================================================
+CELL 15 [code]
+================================================================================
+fig, ax = plt.subplots(figsize=(12, 5))
+
+sns.boxplot(
+    data=clean,
+    x="Dataset",
+    y="Yld_Mass_D",
+    ax=ax,
+    showfliers=False,
+    hue="Dataset",
+    palette="Set2",
+    legend=False
+)
+
+ax.tick_params(axis="x", rotation=45)
+
+ax.set_title("Distribución del Rendimiento Seco por Pasada", fontsize=13, fontweight='bold', pad=15)
+ax.set_xlabel("Identificador de Pasada (Dataset)", fontsize=11)
+ax.set_ylabel("Rendimiento Seco [kg/ha]", fontsize=11)
+
+ax.grid(axis='y', linestyle='--', alpha=0.6)
+
+fig.tight_layout()
+plt.show()
+
+--- DISPLAY ---
+<Figure size 1200x500 with 1 Axes>
+================================================================================
+CELL 16 [markdown]
+================================================================================
+## 7. Mapa de calor (Correlación)
+
+================================================================================
+CELL 17 [code]
+================================================================================
+import numpy as np
+
+plt.figure(figsize=(8, 6))
+
+cols_corr = ["Yld_Mass_D", "Moisture__", "Speed_km_h", "Elevation_"]
+corr_matrix = clean[cols_corr].corr()
+
+sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f", linewidths=.5,
+            xticklabels=["Rendimiento", "Humedad", "Velocidad", "Elevación"],
+            yticklabels=["Rendimiento", "Humedad", "Velocidad", "Elevación"])
+
+plt.title("Mapa de Calor - Matriz de Correlación de Variables", fontsize=12, fontweight='bold')
+plt.show()
+
+--- DISPLAY ---
+<Figure size 800x600 with 2 Axes>
+================================================================================
+CELL 18 [markdown]
+================================================================================
+## 8. Notas de calidad de dato
+
+Outliers típicos de un monitor de cosecha:
+
+- **Arranques y cabeceras**: velocidad baja o flujo inestable al entrar/salir de la pasada.
+- **Solapes**: el ancho de labor (`Swth_Wdth_`) fijo no siempre refleja el solape real.
+- **Humedad y masa**: picos de `Yld_Mass_W` / `Yld_Mass_D` en frenadas o cambios de rumbo.
+- **Tiempo**: el serial de Excel se convierte a datetime; revisar zona horaria si se cruza con otras fuentes.
+- **GPS**: puntos con `lat`/`lon` nulos o fuera del lote se filtran en la limpieza mínima; aún pueden quedar puntos de borde.
